@@ -3,6 +3,8 @@ import os
 import re
 import tempfile
 from string import Template
+import shutil
+from time import sleep
 
 from PyQt5 import uic, QtCore
 from PyQt5.QtWidgets import *
@@ -56,19 +58,19 @@ def generate_ffmpeg_cmdline(file_in, ass_in, output_path, vcodec, acodec, vencod
             s_dict["vcodec"] = "hevc_nvenc"
 
         if rc == v.rc["cqp"]:
-            s_dict["vcodec_opt"] = "-preset slow -rc constqp -qp " + rcparam1
+            s_dict["vcodec_opt"] = "-rc constqp -qp " + rcparam1
         elif rc == v.rc["cbr"]:
-            s_dict["vcodec_opt"] = "-preset slow -rc cbr_hq -cbr true -b:v " + rcparam1
+            s_dict["vcodec_opt"] = "-rc cbr_hq -cbr true -b:v " + rcparam1
         elif rc == v.rc["vbr2"]:
-            s_dict["vcodec_opt"] = ("-preset slow -rc vbr -2pass true " +
+            s_dict["vcodec_opt"] = ("-rc vbr -2pass true " +
                                     "-b:v " + rcparam1 + " " +
                                     "-maxrate:v " + rcparam2)
         elif rc == v.rc["vbr"]:
-            s_dict["vcodec_opt"] = ("-preset slow -rc vbr " +
+            s_dict["vcodec_opt"] = ("-rc vbr " +
                                     "-b:v " + rcparam1 + " " +
                                     "-maxrate:v " + rcparam2)
         elif rc == v.rc["vbrhq"]:
-            s_dict["vcodec_opt"] = ("-preset slow -rc vbr_hq " +
+            s_dict["vcodec_opt"] = ("-rc vbr_hq " +
                                     "-b:v " + rcparam1 + " " +
                                     "-maxrate:v " + rcparam2)
     elif vcodec == v.vcodec["iqsv"]:
@@ -127,19 +129,19 @@ def gen_ffmpeg_cmdline_optonly(vcodec, acodec, vencoding, rc, rcparam1, rcparam2
             s_dict["vcodec"] = "hevc_nvenc"
 
         if rc == v.rc["cqp"]:
-            s_dict["vcodec_opt"] = "-preset slow -rc constqp -qp " + rcparam1
+            s_dict["vcodec_opt"] = "-rc constqp -qp " + rcparam1
         elif rc == v.rc["cbr"]:
-            s_dict["vcodec_opt"] = "-preset slow -rc cbr_hq -cbr true -b:v " + rcparam1
+            s_dict["vcodec_opt"] = "-rc cbr_hq -cbr true -b:v " + rcparam1
         elif rc == v.rc["vbr2"]:
-            s_dict["vcodec_opt"] = ("-preset slow -rc vbr -2pass true " +
+            s_dict["vcodec_opt"] = ("-rc vbr -2pass true " +
                                     "-b:v " + rcparam1 + " " +
                                     "-maxrate:v " + rcparam2)
         elif rc == v.rc["vbr"]:
-            s_dict["vcodec_opt"] = ("-preset slow -rc vbr " +
+            s_dict["vcodec_opt"] = ("-rc vbr " +
                                     "-b:v " + rcparam1 + " " +
                                     "-maxrate:v " + rcparam2)
         elif rc == v.rc["vbrhq"]:
-            s_dict["vcodec_opt"] = ("-preset slow -rc vbr_hq " +
+            s_dict["vcodec_opt"] = ("-rc vbr_hq " +
                                     "-b:v " + rcparam1 + " " +
                                     "-maxrate:v " + rcparam2)
     elif vcodec == v.vcodec["iqsv"]:
@@ -314,9 +316,17 @@ class MainWindow(QMainWindow):
             file_in = "\"" + file_in + "\""
 
         ass_in = self.line_ass_path.text().strip()
+        
         if ass_in.startswith("\"") and ass_in.endswith("\""):
             ass_in = ass_in.lstrip("\"").rstrip("\"")
-        ass_in = ass_in.replace("\\", r"\\\\").replace(r",", r"\\\,").replace(r"'", r"\\\'").replace(":", r"\\\:")
+
+        # ass_in = ass_in\
+        #     .replace("\\", r"\\\\")\
+        #     .replace(r",", r"\\\,")\
+        #     .replace(r"'", r"\\\'")\
+        #     .replace(":", r"\\\:")\
+        #     .replace("[", r"\\\[")\
+        #     .replace("]", r"\\\]")
 
         output_path = self.line_output_path.text().strip()
         if not (output_path.startswith("\"") and output_path.endswith("\"")):
@@ -331,44 +341,50 @@ class MainWindow(QMainWindow):
 
         if self.check_rmv_ad.isChecked():
             # Step 1. Create the file.
-            temp_dir = '"' + tempfile.gettempdir() + os.path.sep + "video-packer" + '"'
+            temp_dir = os.path.join(tempfile.gettempdir(), "video-packer")
 
             # 遇到一个很神奇的bug，直接os.makedirs()会失败
             # 它会一路往上找到根盘符，然后说无法创建目录"C:"
-            os.system("mkdir " + temp_dir)
+            try:
+                os.makedirs(temp_dir, exist_ok=True)
+            except:
+                os.system("mkdir \"" + temp_dir + "\"")
 
-            temp_filename = tempfile.gettempdir() + os.path.sep + "video-packer" + os.path.sep + "temp.mp4"
-            part1_filename = tempfile.gettempdir() + os.path.sep + "video-packer" + os.path.sep + "part1.mp4"
-            part2_filename = tempfile.gettempdir() + os.path.sep + "video-packer" + os.path.sep + "part2.mp4"
-            ffconcat_filename = tempfile.gettempdir() + os.path.sep + "video-packer" + os.path.sep + "comb.ffconcat"
-            bash_file = tempfile.gettempdir() + os.path.sep + "video-packer" + os.path.sep + "start.bat"
+            ass_file_copy = os.path.join(temp_dir, 'sub.ass')
+            temp_filename = os.path.join(temp_dir, "temp.mp4")
+            part1_filename = os.path.join(temp_dir, "part1.mp4")
+            part2_filename = os.path.join(temp_dir, "part2.mp4")
+            ffconcat_filename = os.path.join(temp_dir, "comb.ffconcat")
+            bash_file = os.path.join(temp_dir, "start.bat")
 
             try:
                 os.remove(temp_filename)
             except FileNotFoundError:
                 pass
-
-            cfile = open(ffconcat_filename, 'w')
-            cfile.writelines(['file part1.mp4' + os.linesep, 'file part2.mp4' + os.linesep])
-            cfile.close()
+            
+            with open(ass_in, 'rb') as f1, open(ass_file_copy, 'wb') as f2:
+                shutil.copyfileobj(f1, f2)
+                
+            with open(ffconcat_filename, 'w') as cfile:
+                cfile.writelines(['file part1.mp4' + os.linesep, 'file part2.mp4' + os.linesep])
 
             ad_begin = self.entry_start_frame.text()
             ad_end = self.entry_end_frame.text()
-            bfile = open(bash_file, 'w')
-            bfile.writelines([
-                generate_ffmpeg_cmdline(file_in, ass_in, temp_filename, vcodec, acodec, vencoding, rc, rcparam1,
-                                        rcparam2) + os.linesep,
-                "cd /d " + temp_dir + os.linesep,
-                "ffmpeg -i temp.mp4 -t " + ad_begin + " " + gen_ffmpeg_cmdline_optonly(vcodec, acodec, vencoding, rc, rcparam1, rcparam2) + " part1.mp4" + os.linesep,
-                "ffmpeg -ss " + ad_end + " -i temp.mp4 " + gen_ffmpeg_cmdline_optonly(vcodec, acodec, vencoding, rc, rcparam1, rcparam2) + " part2.mp4" + os.linesep,
-                "ffmpeg -safe 0 -f concat -i comb.ffconcat -c copy " + output_path + os.linesep,
-                "del part1.mp4" + os.linesep,
-                "del part2.mp4" + os.linesep,
-                "del temp.mp4" + os.linesep,
-                "del comb.ffconcat" + os.linesep,
-                "del start.bat" + os.linesep
-            ])
-            bfile.close()
+            with open(bash_file, 'w') as bfile:
+                bfile.writelines([
+                    "@echo off" + os.linesep,
+                    "cd /d " + temp_dir + os.linesep,
+                    generate_ffmpeg_cmdline(file_in, 'sub.ass', temp_filename, vcodec, acodec, vencoding, rc, rcparam1,
+                                            rcparam2) + os.linesep,
+                    "ffmpeg -y -i temp.mp4 -t " + ad_begin + " " + gen_ffmpeg_cmdline_optonly(vcodec, acodec, vencoding, rc, rcparam1, rcparam2) + " part1.mp4" + os.linesep,
+                    "ffmpeg -y -ss " + ad_end + " -i temp.mp4 " + gen_ffmpeg_cmdline_optonly(vcodec, acodec, vencoding, rc, rcparam1, rcparam2) + " part2.mp4" + os.linesep,
+                    "ffmpeg -y -safe 0 -f concat -i comb.ffconcat -c copy " + output_path + os.linesep,
+                    "del part1.mp4" + os.linesep,
+                    "del part2.mp4" + os.linesep,
+                    "del temp.mp4" + os.linesep,
+                    "del comb.ffconcat" + os.linesep,
+                    # "del start.bat" + os.linesep
+                ])
 
             exec_new_window('"' + bash_file + '"')
 

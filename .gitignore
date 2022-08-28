@@ -51,3 +51,6 @@ docs/_build/
 
 # IDEA project files
 .idea
+
+# PyInstaller
+main.spec

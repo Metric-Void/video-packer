@@ -6,7 +6,7 @@ presets_dict = {
         "vcodec": v.vcodec["nvenc"],
         "acodec": v.acodec["aac"],
         "format": v.format["mp4"],
-        "rc": v.rc["vbrhq"],
+        "rc": v.rc["vbr"],
         "param1": "10M",
         "param2": "15M"
     },
@@ -15,7 +15,7 @@ presets_dict = {
         "vcodec": v.vcodec["nvenc"],
         "acodec": v.acodec["aac"],
         "format": v.format["mp4"],
-        "rc": v.rc["vbrhq"],
+        "rc": v.rc["vbr"],
         "param1": "5M",
         "param2": "10M"
     }
